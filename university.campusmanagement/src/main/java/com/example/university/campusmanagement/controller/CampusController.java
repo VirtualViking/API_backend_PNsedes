@@ -1,9 +1,7 @@
-// CampusController.java corregido con .toList() moderno
 package com.example.university.campusmanagement.controller;
 
 import com.example.university.campusmanagement.dto.CampusCreateRequest;
 import com.example.university.campusmanagement.dto.CampusDto;
-import com.example.university.campusmanagement.dto.CampusStatusDto;
 import com.example.university.campusmanagement.dto.CampusUpdateRequest;
 import com.example.university.campusmanagement.factory.CrudFactory;
 import com.example.university.campusmanagement.model.Campus;
@@ -20,8 +18,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Controlador REST para gestión de campus universitarios
- * Incluye endpoints para el patrón State y operaciones CRUD básicas
+ * Controlador REST para operaciones CRUD básicas de campus universitarios
+ * Se enfoca únicamente en crear, leer, actualizar y eliminar campus
  */
 @RestController
 @RequestMapping("/api/campuses")
@@ -129,100 +127,40 @@ public class CampusController {
         return ResponseEntity.ok(campusDtos);
     }
 
-    // ============ State Pattern Endpoints ============
+    // ============ Endpoints de Búsqueda Básica ============
 
-    @PutMapping("/{id}/activate")
-    public ResponseEntity<Map<String, Object>> activateCampus(@PathVariable String id) {
-        try {
-            Campus campus = campusService.activateCampus(id);
-            Map<String, Object> response = createStateResponse(campus, "Campus activated successfully");
-            return ResponseEntity.ok(response);
+    @GetMapping("/search")
+    public ResponseEntity<List<CampusDto>> searchCampuses(@RequestParam(required = false) String city) {
+        logger.debug("Searching campuses with city: {}", city);
 
-        } catch (IllegalStateException e) {
-            return createErrorResponse(e.getMessage(), HttpStatus.BAD_REQUEST);
-        } catch (RuntimeException e) {
-            return createErrorResponse(CAMPUS_NOT_FOUND_MSG, HttpStatus.NOT_FOUND);
+        if (city != null && !city.trim().isEmpty()) {
+            // Buscar por ciudad usando el servicio
+            List<Campus> campuses = campusService.getAllCampuses().stream()
+                    .filter(campus -> city.equalsIgnoreCase(campus.getCity()))
+                    .toList();
+
+            List<CampusDto> campusDtos = campuses.stream()
+                    .map(CampusDto::fromCampus)
+                    .toList();
+
+            return ResponseEntity.ok(campusDtos);
         }
+
+        return getAllCampuses();
     }
 
-    @PutMapping("/{id}/deactivate")
-    public ResponseEntity<Map<String, Object>> deactivateCampus(@PathVariable String id) {
-        try {
-            Campus campus = campusService.deactivateCampus(id);
-            Map<String, Object> response = createStateResponse(campus, "Campus deactivated successfully");
-            return ResponseEntity.ok(response);
+    @GetMapping("/count")
+    public ResponseEntity<Map<String, Object>> getCampusCount() {
+        logger.debug("Getting campus count");
 
-        } catch (RuntimeException e) {
-            return createErrorResponse(CAMPUS_NOT_FOUND_MSG, HttpStatus.NOT_FOUND);
-        }
-    }
+        List<Campus> allCampuses = campusService.getAllCampuses();
 
-    @PutMapping("/{id}/maintenance")
-    public ResponseEntity<Map<String, Object>> putCampusInMaintenance(@PathVariable String id) {
-        try {
-            Campus campus = campusService.putCampusInMaintenance(id);
-            Map<String, Object> response = createStateResponse(campus, "Campus put in maintenance mode");
-            return ResponseEntity.ok(response);
-
-        } catch (IllegalStateException e) {
-            return createErrorResponse(e.getMessage(), HttpStatus.BAD_REQUEST);
-        } catch (RuntimeException e) {
-            return createErrorResponse(CAMPUS_NOT_FOUND_MSG, HttpStatus.NOT_FOUND);
-        }
-    }
-
-    @GetMapping("/{id}/status")
-    public ResponseEntity<CampusStatusDto> getCampusStatus(@PathVariable String id) {
-        try {
-            Campus campus = (Campus) crudService.findById(id);
-            CampusStatusDto status = CampusStatusDto.fromCampus(campus);
-            return ResponseEntity.ok(status);
-
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    // ============ Consultas por Estado (usando DTOs) ============
-
-    @GetMapping("/state/{stateName}")
-    public ResponseEntity<List<CampusDto>> getCampusesByState(@PathVariable String stateName) {
-        List<Campus> campuses = campusService.findByState(stateName);
-        // CORREGIDO: Usar .toList() en lugar de .collect(Collectors.toList())
-        List<CampusDto> campusDtos = campuses.stream()
-                .map(CampusDto::fromCampus)
-                .toList();
-        return ResponseEntity.ok(campusDtos);
-    }
-
-    @GetMapping("/available/students")
-    public ResponseEntity<List<CampusDto>> getCampusesAvailableForStudents() {
-        List<Campus> campuses = campusService.findAvailableForStudents();
-        // CORREGIDO: Usar .toList() en lugar de .collect(Collectors.toList())
-        List<CampusDto> campusDtos = campuses.stream()
-                .map(CampusDto::fromCampus)
-                .toList();
-        return ResponseEntity.ok(campusDtos);
-    }
-
-    // ============ Métodos de Utilidad (extraídos para evitar duplicación) ============
-
-    private Map<String, Object> createStateResponse(Campus campus, String message) {
         Map<String, Object> response = new HashMap<>();
-        response.put("message", message);
-        response.put("campusId", campus.getId());
-        response.put("campusName", campus.getName());
-        response.put("currentState", campus.getCurrentState());
-        response.put("statusDescription", campus.getStatusDescription());
-        response.put("canAcceptStudents", campus.canAcceptStudents());
-        response.put("canScheduleEvents", campus.canScheduleEvents());
-        return response;
-    }
+        response.put("total", allCampuses.size());
+        response.put("active", allCampuses.stream().filter(Campus::isActive).count());
+        response.put("inactive", allCampuses.stream().filter(campus -> !campus.isActive()).count());
 
-    private ResponseEntity<Map<String, Object>> createErrorResponse(String message, HttpStatus status) {
-        Map<String, Object> errorResponse = new HashMap<>();
-        errorResponse.put("error", message);
-        errorResponse.put("status", status.value());
-        return ResponseEntity.status(status).body(errorResponse);
+        return ResponseEntity.ok(response);
     }
 }
+
